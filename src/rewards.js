@@ -16,12 +16,16 @@ import {
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
+
 const isBrowser = typeof window !== 'undefined';
+
 const sleep = ms => new Promise(res => setTimeout(res, ms));
+
 const camelFromEnum = str => {
   const base = /^[A-Z]/.test(str) ? str.toLowerCase() : str;
   return base.replace(/_([a-zA-Z])/g, (_, c) => c.toUpperCase());
 };
+
 const fetchRetry = async (
   fetchFn,
   url,
@@ -42,19 +46,18 @@ const fetchRetry = async (
     }
   }
 };
+
 const buildUrl = (base, path) => {
   const cleanPath = path.replace(/\/\//g, '/');
   return new URL(cleanPath, base).toString();
 };
+
 // retry helper, now rotates endpoints on retries
-const withRetries = async (fn, caller, retries = 3, baseDelay = 300) => {
+const withRetries = async (fn, retries = 3, baseDelay = 300) => {
   let lastErr;
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      if (attempt > 0 && caller) {
-        await getNodeEndpoint(caller);
-      }
-      return await fn();
+      return await fn(attempt);
     } catch (err) {
       lastErr = err;
       if (attempt < retries) {
@@ -130,8 +133,10 @@ const buildConfig = async (userCfg = {}) => {
 /* -------------------------------------------------------------------------- */
 class HiveApi {
   #getAccountHistory;
+  #apiEndpoint;
 
   constructor({ hiveJs: hivelib, hiveNodeUrl }) {
+    this.#apiEndpoint = hiveNodeUrl;
     hivelib.api.setOptions({ url: hiveNodeUrl });
     this.#getAccountHistory = promisify(
       hivelib.api.getAccountHistory,
@@ -140,8 +145,15 @@ class HiveApi {
 
   getAccountHistory = async (account, start, limit) =>
     withRetries(
-      () => this.#getAccountHistory(account, start, limit),
-      'hive',
+      async (attempt) => {
+        if (attempt > 1) {
+          const newEndpoint = await getNodeEndpoint({ type: 'hive', prevUrl: this.#apiEndpoint });
+          this.#apiEndpoint = newEndpoint;
+          hiveJs.api.setOptions({ url: newEndpoint });
+          console.log('HiveApi switched to new endpoint', newEndpoint);
+        }
+        return this.#getAccountHistory(account, start, limit);
+      },
     );
 }
 
@@ -183,8 +195,13 @@ class HiveEngineApi {
   }
 
   getHistory = async ({ account, limit, offset }) =>
-    withRetries(async () => {
+    withRetries(async (attempt) => {
       const HISTORY_PATH = 'accountHistory';
+      if (attempt > 1) {
+        const newEndpoint = await getNodeEndpoint({ type: 'heh', prevUrl: this.#historyUrl });
+        this.#historyUrl = newEndpoint;
+        console.log('HiveEngineHistoryApi switched to new endpoint', newEndpoint);
+      }
       const url = buildUrl(
         this.#historyUrl,
         `${HISTORY_PATH}?account=${encodeURIComponent(account)}`
@@ -193,10 +210,10 @@ class HiveEngineApi {
       const res = await fetchRetry(this.#fetch, url);
       if (!res.ok) throw new Error(`HE history (${url}): ${res.status}`);
       return res.json();
-    }, 'heh');
+    });
 
   getTokenPriceUsd = async ({ symbol, hiveUsd }) =>
-    withRetries(async () => {
+    withRetries(async (attempt) => {
       const body = {
         jsonrpc: '2.0',
         method: 'find',
@@ -209,6 +226,11 @@ class HiveEngineApi {
         },
         id: 1,
       };
+      if (attempt > 1) {
+        const newEndpoint = await getNodeEndpoint({ type: 'he', prevUrl: this.#rpcUrl });
+        this.#rpcUrl = newEndpoint;
+        console.log('HiveEnginePriceApi switched to new endpoint', newEndpoint);
+      }
       const CONTRACTS_PATH = 'contracts';
       const url = buildUrl(this.#rpcUrl, CONTRACTS_PATH);
       const res = await fetchRetry(this.#fetch, url, {
@@ -220,7 +242,7 @@ class HiveEngineApi {
       const data = await res.json();
       const lastPrice = data?.result?.[0]?.lastPrice;
       return lastPrice ? +lastPrice * hiveUsd : 0;
-    }, 'he');
+    });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -286,7 +308,7 @@ class HiveEarningsService {
           );
           breakdown[cat].tot += amt;
           breakdown[cat].transactions += 1;
-          verbose && log.debug('[HIVE‑IN]', { idx, ts, amt });
+          verbose && log.debug('[HIVE-IN]', { idx, ts, amt });
         }
       }
 
@@ -423,13 +445,15 @@ class TokenEarningsService {
           raw[cat][symbol] = (raw[cat][symbol] ?? 0) + parseFloat(quantity);
           counts[cat][symbol] = (counts[cat][symbol] ?? 0) + 1;
           totTokensTransactions += 1;
-          verbose && log.debug('[TOK‑IN]', { ts, symbol, quantity });
+          verbose && log.debug('[TOK-IN]', { ts, symbol, quantity });
         }
       }
 
       offset += heHistoryLimit;
       await sleep(apiCallsDelay);
     }
+
+    this.#cfg.verbose && this.#cfg.log.debug('[inbounds] fetching prices...');
 
     const hiveUsd = await this.#priceProv.getHiveUsd();
     const breakdown = {};
@@ -542,8 +566,12 @@ class EarningsAnalyzer {
   #sinceTs = () => Date.now() - this.#cfg.hours * 3_600_000;
 
   analyseAccount = async account => {
-    const err = this.#cfg.hiveUtils.validateAccountName(account);
-    if (err) throw new Error(`Invalid Hive username “${account}”: ${err}`);
+    try {
+      const err = this.#cfg.hiveUtils.validateAccountName(account);
+      if (err) throw new Error(`Invalid Hive username “${account}”: ${err}`);
+    } catch (err) {
+      console.error(`Failed to validate account name: ${account}`);
+    }
     const since = this.#sinceTs();
 
     this.#cfg.verbose && this.#cfg.log.debug(
@@ -675,9 +703,13 @@ class EarningsAnalyzer {
 
     for (const sender of senders) {
       try {
-        const errName = this.#cfg.hiveUtils.validateAccountName(sender);
-        if (errName) {
-          throw new Error(`Invalid Hive username “${sender}”: ${errName}`);
+        try {
+          const errName = this.#cfg.hiveUtils.validateAccountName(sender);
+          if (errName) {
+            throw new Error(`Invalid Hive username “${sender}”: ${errName}`);
+          }
+        } catch (err) {
+          console.error(`Failed to validate account name: ${sender}`);
         }
 
         this.#cfg.verbose && this.#cfg.log.debug(
@@ -710,6 +742,8 @@ class EarningsAnalyzer {
           };
           continue;
         }
+
+        this.#cfg.verbose && this.#cfg.log.debug('[outbounds] fetching prices...');
 
         const recipients = {};
         const hiveUsd = await this.#priceProv.getHiveUsd();

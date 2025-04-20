@@ -1,37 +1,9 @@
-// import { dirname, resolve } from 'path';
-// import { fileURLToPath } from 'url';
-
-// const __dirname = dirname(fileURLToPath(import.meta.url));
-
-// export default {
-//   mode: 'production',
-//   entry: './index.js',
-//   output: {
-//     filename: 'hiverewards.bundle.js',
-//     path: resolve(__dirname, 'dist'),
-//     library: {
-//       name: 'HiveRewards',
-//       type: 'umd',
-//     },
-//   },
-//   experiments: { topLevelAwait: true },
-//   resolve: {
-//     fallback: {
-//       'node-fetch': false, // strip node-only dep from browser bundle
-//       util: false,
-//       url: false,
-//       path: false,
-//       fs: false,
-//     },
-//   },
-// };
-
 const path = require('path');
 const webpack = require('webpack');
 
 module.exports = {
   mode: 'production',
-  entry: './index.js',
+  entry: './src/index.js',
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'hiverewards.bundle.js',

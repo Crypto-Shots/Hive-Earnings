@@ -98,10 +98,15 @@ const refreshNodes = async (type) => {
 /**
  * We pick a random endpoint from cache[type].nodes and verify it responds to HEAD.
  * If it fails we remove the unreacheable url from the cache and pick another url or refresh.
+ * Pick another url or refresh occurs also as first thing if a prevUrl to discard is passed in.
  * @param {'hive'|'he'|'heh'} type
+ * @param {string} prevUrl
  * @returns {Promise<string>}
  */
-export const getNodeEndpoint = async (type) => {
+export const getNodeEndpoint = async ({ type, prevUrl }) => {
+  if (prevUrl) {
+    cache[type].nodes = cache[type].nodes.filter(n => n !== prevUrl);
+  }
   const { nodes, lastFetch } = cache[type];
   if (!nodes?.length || (Date.now() - lastFetch) > HEALTH_STALE_AFTER_MS) {
     await refreshNodes(type);
@@ -116,7 +121,7 @@ export const getNodeEndpoint = async (type) => {
     return url;
   } catch {
     cache[type].nodes = cache[type].nodes.filter((n) => n !== url); // 
-    return getNodeEndpoint(type);
+    return getNodeEndpoint({ type });
   }
 };
 
@@ -136,16 +141,16 @@ Object.keys(BEACON_URLS)
  * Get a healthy Hive RPC endpoint.
  * @returns {Promise<string>}
  */
-export const getHealthyHiveNode = () => getNodeEndpoint('hive');
+export const getHealthyHiveNode = () => getNodeEndpoint({ type: 'hive' });
 
 /**
  * Get a healthy Hive Engine API endpoint.
  * @returns {Promise<string>}
  */
-export const getHealthyHeNode = () => getNodeEndpoint('he');
+export const getHealthyHeNode = () => getNodeEndpoint({ type: 'he' });
 
 /**
  * Get a healthy Hive Engine History endpoint.
  * @returns {Promise<string>}
  */
-export const getHealthyHeHistoryNode = () => getNodeEndpoint('heh');
+export const getHealthyHeHistoryNode = () => getNodeEndpoint({ type: 'heh' });
