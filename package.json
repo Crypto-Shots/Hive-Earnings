@@ -1,0 +1,55 @@
+{
+  "name": "hiverewards",
+  "version": "1.0.0",
+  "description": "SDK for analysing HIVE & Hive-Engine earnings.",
+  "type": "module",
+  "scripts": {
+    "start": "node rewards.js",
+    "test:node": "node tests/example.js",
+    "test:cli1": "node rewards.js --inbound caspermoeller89 --from chessRewards=karina.gpt --hours 72",
+    "test:cli2": "node rewards.js --outbound cryptoshots.tips cryptoshotsdoom karina.gpt --days 7",
+    "build:web": "webpack --config webpack.config.cjs",
+    "serve:web": "npx http-server dist"
+  },
+  "dependencies": {
+    "@hiveio/hive-js": "^0.8.4",
+    "node-fetch": "2.6.7"
+  },
+  "devDependencies": {
+    "assert": "^2.1.0",
+    "buffer": "^6.0.3",
+    "crypto-browserify": "^3.12.1",
+    "http-server": "^14.1.1",
+    "path-browserify": "^1.0.1",
+    "process": "^0.11.10",
+    "stream-browserify": "^3.0.0",
+    "url": "^0.11.4",
+    "util": "^0.12.5",
+    "vm-browserify": "^1.1.2",
+    "webpack": "^5.99.6",
+    "webpack-cli": "^6.0.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "hive",
+    "hive-engine",
+    "hive.io",
+    "sdk"
+  ],
+  "exports": {
+    ".": "./index.js"
+  },
+  "bin": {
+    "hiverewards": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "dist/"
+  ],
+  "main": "index.js",
+  "module": "index.js",
+  "browser": "dist/hiverewards.bundle.js",
+  "sideEffects": false
+}
