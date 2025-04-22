@@ -13,6 +13,7 @@ import {
   getNodeEndpoint,
 } from './beacon.js';
 
+
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
@@ -26,6 +27,11 @@ const camelFromEnum = str => {
   return base.replace(/_([a-zA-Z])/g, (_, c) => c.toUpperCase());
 };
 
+const buildUrl = (base, path) => {
+  const cleanPath = path.replace(/\/\//g, '/');
+  return new URL(cleanPath, base).toString();
+};
+
 const fetchRetry = async (
   fetchFn,
   url,
@@ -33,44 +39,49 @@ const fetchRetry = async (
   retries = 3,
   timeoutMs = 10_000,
 ) => {
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
+  for (let attempt = 0; attempt < retries; attempt ++) {
     const ctrl = new AbortController();
     const id = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
       return await fetchFn(url, { ...options, signal: ctrl.signal });
     } catch (err) {
       if (attempt === retries) throw err;
-      await sleep(2 ** attempt * 300);
+      const expWait = 2 ** attempt * 300;
+      await sleep(expWait);
     } finally {
       clearTimeout(id);
     }
   }
 };
 
-const buildUrl = (base, path) => {
-  const cleanPath = path.replace(/\/\//g, '/');
-  return new URL(cleanPath, base).toString();
-};
-
-// retry helper, now rotates endpoints on retries
 const withRetries = async (fn, retries = 3, baseDelay = 300) => {
   let lastErr;
-  for (let attempt = 0; attempt <= retries; attempt++) {
+  for (let attempt = 0; attempt < retries; attempt++) {
     try {
       return await fn(attempt);
     } catch (err) {
       lastErr = err;
       if (attempt < retries) {
-        await sleep(2 ** attempt * baseDelay);
+        const expWait = 2 ** attempt * baseDelay;
+        await sleep(expWait);
       }
     }
   }
   throw lastErr;
 };
 
+
 /* -------------------------------------------------------------------------- */
 /* Default config (endpoints deferred until factory)                          */
 /* -------------------------------------------------------------------------- */
+
+const DEFAULT_TRACKING_HOURS = 24;
+const DEFAULT_API_CALLS_DELAY_MS = 500;
+const DEFAULT_PRICE_API = 'https://api.coingecko.com/api/v3/simple/price?ids=hive&vs_currencies=usd';
+const DEFAULT_PRICE_CACHING_MINS = 10;
+const DEFAULT_HIVE_HISTORY_LIMIT = 500;
+const DEFAULT_HE_HISTORY_LIMIT = 250;
+
 const defaultConfigBase = {
   fetch:
     (isBrowser && window.fetch) ||
@@ -79,22 +90,22 @@ const defaultConfigBase = {
   hiveJs,
   hiveUtils,
   log: console,
-  hours: 24,
-  apiCallsDelay: 500,
-  hivePriceUrl:
-    process.env.HIVE_PRICE_URL ??
-    'https://api.coingecko.com/api/v3/simple/price?ids=hive&vs_currencies=usd',
-  hiveHistoryLimit: 500,
-  heHistoryLimit: 250,
-  priceCacheMins: Number(process.env.PRICE_CACHE_MINS ?? 10),
+  hours: DEFAULT_TRACKING_HOURS,
+  apiCallsDelay: DEFAULT_API_CALLS_DELAY_MS,
+  hivePriceUrl: process.env.HIVE_PRICE_URL ?? DEFAULT_PRICE_API,
+  priceCacheMins: Number(process.env.PRICE_CACHE_MINS ?? DEFAULT_PRICE_CACHING_MINS),
+  hiveHistoryLimit: DEFAULT_HIVE_HISTORY_LIMIT,
+  heHistoryLimit: DEFAULT_HE_HISTORY_LIMIT,
   hiveSenders: {},
   tokenSenders: {},
   ignoredReceivers: [],
 };
 
+
 /* -------------------------------------------------------------------------- */
-/* Build full config by fetching healthy endpoints if not overridden           */
+/* Build full config by fetching healthy endpoints if not overridden          */
 /* -------------------------------------------------------------------------- */
+
 const buildConfig = async (userCfg = {}) => {
   const startTs = Date.now();
   const [
@@ -115,7 +126,7 @@ const buildConfig = async (userCfg = {}) => {
 
   const durationSeconds = ((Date.now() - startTs) / 1000).toFixed(2);
   console.log(
-    `HR config ready in ${durationSeconds}s`,
+    `[HR] Config initialized in ${durationSeconds}s`,
     { verbose: userCfg.verbose, hiveNodeUrl, hiveEngineRpcUrl, hiveEngineHistoryUrl },
   );
 
@@ -128,9 +139,11 @@ const buildConfig = async (userCfg = {}) => {
   };
 };
 
+
 /* -------------------------------------------------------------------------- */
 /* Infrastructure classes                                                     */
 /* -------------------------------------------------------------------------- */
+
 class HiveApi {
   #getAccountHistory;
   #apiEndpoint;
@@ -138,9 +151,8 @@ class HiveApi {
   constructor({ hiveJs: hivelib, hiveNodeUrl }) {
     this.#apiEndpoint = hiveNodeUrl;
     hivelib.api.setOptions({ url: hiveNodeUrl });
-    this.#getAccountHistory = promisify(
-      hivelib.api.getAccountHistory,
-    ).bind(hivelib.api);
+    this.#getAccountHistory = promisify(hivelib.api.getAccountHistory)
+      .bind(hivelib.api);
   }
 
   getAccountHistory = async (account, start, limit) =>
@@ -150,7 +162,7 @@ class HiveApi {
           const newEndpoint = await getNodeEndpoint({ type: 'hive', prevUrl: this.#apiEndpoint });
           this.#apiEndpoint = newEndpoint;
           hiveJs.api.setOptions({ url: newEndpoint });
-          console.log('HiveApi switched to new endpoint', newEndpoint);
+          console.log('[HR] HiveApi switched to new endpoint', { attempt, newEndpoint });
         }
         return this.#getAccountHistory(account, start, limit);
       },
@@ -173,13 +185,15 @@ class PriceProvider {
   getHiveUsd = async () =>
     withRetries(async () => {
       const now = Date.now();
-      if (this.#memo && now - this.#memo.ts < this.#cacheMs) {
+      if (this.#memo && ((now - this.#memo.ts) < this.#cacheMs)) {
         return this.#memo.val;
       }
       const data = await fetchRetry(this.#fetch, this.#url).then(r => r.json());
-      const val = data.hive.usd;
-      this.#memo = { ts: now, val };
-      return val;
+      const val = data?.hive?.usd;
+      if (val) {
+        this.#memo = { ts: now, val };
+      }
+      return val ?? 0;
     });
 }
 
@@ -200,7 +214,7 @@ class HiveEngineApi {
       if (attempt > 1) {
         const newEndpoint = await getNodeEndpoint({ type: 'heh', prevUrl: this.#historyUrl });
         this.#historyUrl = newEndpoint;
-        console.log('HiveEngineHistoryApi switched to new endpoint', newEndpoint);
+        console.log('[HR] HiveEngineHistoryApi switched to new endpoint', { attempt, newEndpoint });
       }
       const url = buildUrl(
         this.#historyUrl,
@@ -229,7 +243,7 @@ class HiveEngineApi {
       if (attempt > 1) {
         const newEndpoint = await getNodeEndpoint({ type: 'he', prevUrl: this.#rpcUrl });
         this.#rpcUrl = newEndpoint;
-        console.log('HiveEnginePriceApi switched to new endpoint', newEndpoint);
+        console.log('[HR] HiveEnginePriceApi switched to new endpoint', { attempt, newEndpoint });
       }
       const CONTRACTS_PATH = 'contracts';
       const url = buildUrl(this.#rpcUrl, CONTRACTS_PATH);
@@ -245,9 +259,11 @@ class HiveEngineApi {
     });
 }
 
+
 /* -------------------------------------------------------------------------- */
 /* Domain services                                                            */
 /* -------------------------------------------------------------------------- */
+
 class HiveEarningsService {
   #api;
   #cfg;
@@ -257,7 +273,7 @@ class HiveEarningsService {
     this.#cfg = cfg;
   }
 
-  analyseInbound = async (username, sinceTs) => {
+  analyzeInbound = async (username, sinceTs) => {
     const {
       hiveHistoryLimit,
       apiCallsDelay,
@@ -265,12 +281,11 @@ class HiveEarningsService {
       verbose,
       log,
     } = this.#cfg;
-    verbose &&
-      log.debug('[analyseInbound] (Hive)', { username, sinceTs });
+    verbose && log.debug('[HR] [analyzeInbound] (Hive)', { username, sinceTs });
     const senderAccounts = Object.values(hiveSenders);
     const breakdown = Object.fromEntries(
-      Object.keys(hiveSenders).map(k => [
-        camelFromEnum(k),
+      Object.keys(hiveSenders).map(key => [
+        camelFromEnum(key),
         { tot: 0, transactions: 0 },
       ]),
     );
@@ -303,12 +318,12 @@ class HiveEarningsService {
         if (inbound) {
           const amt = parseFloat(opData.amount);
           totHiveSent += amt;
-          const cat = camelFromEnum(
-            Object.entries(hiveSenders).find(([, v]) => v === opData.from)[0],
+          const category = camelFromEnum(
+            Object.entries(hiveSenders).find(([, val]) => val === opData.from)[0],
           );
-          breakdown[cat].tot += amt;
-          breakdown[cat].transactions += 1;
-          verbose && log.debug('[HIVE-IN]', { idx, ts, amt });
+          breakdown[category].tot += amt;
+          breakdown[category].transactions += 1;
+          verbose && log.debug('[HR] [HIVE-IN]', { idx, ts, amt, category });
         }
       }
 
@@ -318,28 +333,27 @@ class HiveEarningsService {
     }
 
     const totHiveTransactions = Object.values(breakdown).reduce(
-      (sum, x) => sum + x.transactions,
+      (sum, xx) => sum + xx.transactions,
       0,
     );
 
     return { totHiveSent, breakdown, totHiveTransactions };
   };
 
-  analyseOutbound = async (sender, sinceTs) => {
+  analyzeOutbound = async (sender, sinceTs) => {
     const {
+      ignoredReceivers,
       hiveHistoryLimit,
       apiCallsDelay,
       verbose,
       log,
-      ignoredReceivers,
     } = this.#cfg;
     const ignored = ignoredReceivers;
     const perRecipient = {};
     const perRecipientTxCount = {};
     let more = true;
     let start = -1;
-    verbose &&
-      log.debug('[analyseOutbound] (Hive)', { sender, sinceTs });
+    verbose && log.debug('[HR] [analyzeOutbound] (Hive)', { sender, sinceTs });
 
     while (more) {
       const page = await this.#api.getAccountHistory(
@@ -362,15 +376,14 @@ class HiveEarningsService {
           opName === 'transfer' &&
           opData.amount?.endsWith(' HIVE');
 
-        const shouldIgnore =
-          opData.from === opData.to || ignored.includes(opData.to);
+        const shouldIgnore = opData.from === opData.to
+          || ignored.includes(opData.to);
 
         if (outbound && !shouldIgnore) {
           const amt = parseFloat(opData.amount);
           perRecipient[opData.to] = (perRecipient[opData.to] ?? 0) + amt;
-          perRecipientTxCount[opData.to] =
-            (perRecipientTxCount[opData.to] ?? 0) + 1;
-          verbose && log.debug('[HIVE‑OUT]', { to: opData.to, amt });
+          perRecipientTxCount[opData.to] = (perRecipientTxCount[opData.to] ?? 0) + 1;
+          verbose && log.debug('[HR] [HIVE-OUT]', { to: opData.to, amt });
         }
       }
 
@@ -397,7 +410,7 @@ class TokenEarningsService {
   getTokenPriceUsd = async params =>
     withRetries(() => this.#heApi.getTokenPriceUsd(params));
 
-  analyseInbound = async (username, sinceTs) => {
+  analyzeInbound = async (username, sinceTs) => {
     const {
       tokenSenders,
       heHistoryLimit,
@@ -411,8 +424,7 @@ class TokenEarningsService {
     let totTokensTransactions = 0;
     let more = true;
     let offset = 0;
-    verbose &&
-      log.debug('[analyseInbound] (Tokens)', { username, sinceTs });
+    verbose && log.debug('[HR] [analyzeInbound] (Tokens)', { username, sinceTs });
 
     while (more) {
       const page = await this.#heApi.getHistory({
@@ -430,22 +442,20 @@ class TokenEarningsService {
         }
 
         const { operation, symbol, quantity, from, to } = tx;
-        const inbound =
-          (operation === 'tokens_transfer' ||
-            operation === 'tokens_stake') &&
-          to === username &&
-          senderAccounts.includes(from);
+        const inbound = (operation === 'tokens_transfer' || operation === 'tokens_stake')
+          && to === username
+          && senderAccounts.includes(from);
 
         if (inbound) {
-          const cat = camelFromEnum(
+          const category = camelFromEnum(
             Object.entries(tokenSenders).find(([, v]) => v === from)[0],
           );
-          raw[cat] ??= {};
-          counts[cat] ??= {};
-          raw[cat][symbol] = (raw[cat][symbol] ?? 0) + parseFloat(quantity);
-          counts[cat][symbol] = (counts[cat][symbol] ?? 0) + 1;
+          raw[category] ??= {};
+          raw[category][symbol] = (raw[category][symbol] ?? 0) + parseFloat(quantity);
+          counts[category] ??= {};
+          counts[category][symbol] = (counts[category][symbol] ?? 0) + 1;
           totTokensTransactions += 1;
-          verbose && log.debug('[TOK-IN]', { ts, symbol, quantity });
+          verbose && log.debug('[HR] [TOK-IN]', { ts, symbol, quantity, category });
         }
       }
 
@@ -453,29 +463,29 @@ class TokenEarningsService {
       await sleep(apiCallsDelay);
     }
 
-    this.#cfg.verbose && this.#cfg.log.debug('[inbounds] fetching prices...');
-
+    this.#cfg.verbose && this.#cfg.log.debug('[HR] [inbounds] fetching prices...');
     const hiveUsd = await this.#priceProv.getHiveUsd();
+
     const breakdown = {};
     let totUsd = 0;
     const cache = new Map();
-    const priceFor = async sym => {
+    const priceFor = async (sym) => {
       if (cache.has(sym)) return cache.get(sym);
-      const p = await this.getTokenPriceUsd({ symbol: sym, hiveUsd });
-      cache.set(sym, p);
-      return p;
+      const price = await this.getTokenPriceUsd({ symbol: sym, hiveUsd });
+      cache.set(sym, price);
+      return price;
     };
 
-    for (const [cat, tks] of Object.entries(raw)) {
-      breakdown[cat] = {};
-      for (const [sym, amt] of Object.entries(tks)) {
-        const price = await priceFor(sym);
+    for (const [category, tks] of Object.entries(raw)) {
+      breakdown[category] = {};
+      for (const [symbol, amt] of Object.entries(tks)) {
+        const price = await priceFor(symbol);
         const totUsdSym = amt * price;
-        breakdown[cat][sym] = {
+        breakdown[category][symbol] = {
           amount: +amt.toFixed(2),
           price: +price.toFixed(8),
           totUsd: +totUsdSym.toFixed(8),
-          transactions: counts[cat][sym] ?? 0,
+          transactions: counts[category][symbol] ?? 0,
         };
         totUsd += totUsdSym;
       }
@@ -488,21 +498,20 @@ class TokenEarningsService {
     };
   };
 
-  analyseOutbound = async (sender, sinceTs) => {
+  analyzeOutbound = async (sender, sinceTs) => {
     const {
+      ignoredReceivers,
       heHistoryLimit,
       apiCallsDelay,
       verbose,
       log,
-      ignoredReceivers,
     } = this.#cfg;
     const ignored = ignoredReceivers;
     const perRecipient = {};
     const perRecipientTxCount = {};
     let more = true;
     let offset = 0;
-    verbose &&
-      log.debug('[analyseOutbound] (Tokens)', { sender, sinceTs });
+    verbose && log.debug('[HR] [analyzeOutbound] (Tokens)', { sender, sinceTs });
 
     while (more) {
       const page = await this.#heApi.getHistory({
@@ -520,20 +529,15 @@ class TokenEarningsService {
         }
 
         const { operation, symbol, quantity, from, to } = tx;
-        const outbound =
-          (operation === 'tokens_transfer' ||
-            operation === 'tokens_stake') &&
-          from === sender;
+        const outbound = (operation === 'tokens_transfer' || operation === 'tokens_stake')
+          && from === sender;
         const shouldIgnore = from === to || ignored.includes(to);
 
         if (outbound && !shouldIgnore) {
           perRecipient[to] ??= {};
-          perRecipient[to][symbol] =
-            (perRecipient[to][symbol] ?? 0) + parseFloat(quantity);
-          perRecipientTxCount[to] =
-            (perRecipientTxCount[to] ?? 0) + 1;
-          verbose &&
-            log.debug('[TOK‑OUT]', { to, sym: symbol, qty: quantity });
+          perRecipient[to][symbol] = (perRecipient[to][symbol] ?? 0) + parseFloat(quantity);
+          perRecipientTxCount[to] = (perRecipientTxCount[to] ?? 0) + 1;
+          verbose && log.debug('[HR] [TOK-OUT]', { to, sym: symbol, qty: quantity });
         }
       }
 
@@ -545,9 +549,11 @@ class TokenEarningsService {
   };
 }
 
+
 /* -------------------------------------------------------------------------- */
 /* Orchestrator                                                               */
 /* -------------------------------------------------------------------------- */
+
 class EarningsAnalyzer {
   #hiveSvc;
   #tokSvc;
@@ -555,17 +561,17 @@ class EarningsAnalyzer {
   #cfg;
 
   constructor(cfg) {
+    this.#cfg = cfg;
     const hiveApi = new HiveApi(cfg);
+    this.#hiveSvc = new HiveEarningsService(hiveApi, cfg);
     this.#priceProv = new PriceProvider(cfg);
     const heApi = new HiveEngineApi(cfg);
-    this.#hiveSvc = new HiveEarningsService(hiveApi, cfg);
     this.#tokSvc = new TokenEarningsService(heApi, this.#priceProv, cfg);
-    this.#cfg = cfg;
   }
 
   #sinceTs = () => Date.now() - this.#cfg.hours * 3_600_000;
 
-  analyseAccount = async account => {
+  analyzeAccountInbounds = async account => {
     try {
       const err = this.#cfg.hiveUtils.validateAccountName(account);
       if (err) throw new Error(`Invalid Hive username “${account}”: ${err}`);
@@ -575,30 +581,30 @@ class EarningsAnalyzer {
     const since = this.#sinceTs();
 
     this.#cfg.verbose && this.#cfg.log.debug(
-      `[analyseAccount] starting ${account}'s scans...`,
+      `[HR] [analyzeAccountInbounds] starting ${account}'s scans...`,
     );
     const ts = setInterval(() => process.stdout.write('.'), 3000);
     const start = Date.now();
 
-    const [h, t, hiveUsd] = await Promise.all([
-      this.#hiveSvc.analyseInbound(account, since),
-      this.#tokSvc.analyseInbound(account, since),
+    const [hiveResult, tokensResult, hiveUsd] = await Promise.all([
+      this.#hiveSvc.analyzeInbound(account, since),
+      this.#tokSvc.analyzeInbound(account, since),
       this.#priceProv.getHiveUsd(),
     ]);
 
     clearInterval(ts);
     const durationMinutes = ((Date.now() - start) / 60000).toFixed(2);
     console.log(
-      `\n[analyseAccount] ${account}'s scans completed in ${durationMinutes} mins`,
+      `\n[HR] [analyzeAccountInbounds] ${account}'s scans completed in ${durationMinutes} mins`,
     );
 
     return {
       hive: {
-        ...h,
+        ...hiveResult,
         hiveUsd: +hiveUsd.toFixed(4),
-        totUsd: +(h.totHiveSent * hiveUsd).toFixed(2),
+        totUsd: +(hiveResult.totHiveSent * hiveUsd).toFixed(2),
       },
-      tokens: t,
+      tokens: tokensResult,
     };
   };
 
@@ -609,14 +615,18 @@ class EarningsAnalyzer {
     hours,
     days,
   }) => {
-    if (
-      !receivers.length ||
-      Object.keys(hiveSenders).length + Object.keys(tokenSenders).length === 0
+    // params validation
+    if (!receivers.length ||
+      (Object.keys(hiveSenders).length + Object.keys(tokenSenders).length === 0)
     ) {
       throw new Error(
-        'Provide both the receiver accounts and which senders we want to analyze',
+        'Please provide both the receiver(s) and the sender(s) accounts that you want to analyze',
       );
     }
+    if (days && hours) {
+      throw new Error('Please provide either hours or days, not both');
+    }
+
     const origHours = this.#cfg.hours;
     if (hours != null) this.#cfg.hours = hours;
     else if (days != null) this.#cfg.hours = days * 24;
@@ -628,7 +638,7 @@ class EarningsAnalyzer {
     this.#cfg.tokenSenders = tokenSenders;
 
     console.log(
-      '[inbounds] starting inbounds scans...',
+      '[HR] [inbounds] starting inbounds scans...',
       { hours: this.#cfg.hours, receivers, hiveSenders, tokenSenders },
     );
 
@@ -636,7 +646,7 @@ class EarningsAnalyzer {
       try {
         out.recipients = {
           ...out.recipients,
-          [acc]: await this.analyseAccount(acc),
+          [acc]: await this.analyzeAccountInbounds(acc),
         };
       } catch (err) {
         console.error(`[inbounds] Error analyzing ${acc}: ${err.message}`);
@@ -659,9 +669,9 @@ class EarningsAnalyzer {
 
     // sort only the successful ones
     success.sort(
-      ([, a], [, b]) =>
-        b.hive.totUsd + b.tokens.totUsd -
-        (a.hive.totUsd + a.tokens.totUsd),
+      ([, aa], [, bb]) =>
+        (bb.hive.totUsd + bb.tokens.totUsd) -
+        (aa.hive.totUsd + aa.tokens.totUsd),
     );
 
     out.recipients = Object.fromEntries([
@@ -680,13 +690,18 @@ class EarningsAnalyzer {
 
   outbounds = async ({
     senders = [],
+    ignoredReceivers = [],
     hours,
     days,
-    ignoredReceivers = [],
   } = {}) => {
-    if (!senders.length) {
+    // params validation
+    if (!senders?.length) {
       throw new Error('"senders" argument missing - provide at least one account');
     }
+    if (days && hours) {
+      throw new Error('Please provide either hours or days, not both');
+    }
+
     const origHours = this.#cfg.hours;
     if (hours != null) this.#cfg.hours = hours;
     else if (days != null) this.#cfg.hours = days * 24;
@@ -697,7 +712,7 @@ class EarningsAnalyzer {
     const out = {};
 
     console.log(
-      '[outbounds] starting outbounds scans...',
+      '[HR] [outbounds] starting outbounds scans...',
       { hours: this.#cfg.hours, senders, ignoredReceivers },
     );
 
@@ -713,7 +728,7 @@ class EarningsAnalyzer {
         }
 
         this.#cfg.verbose && this.#cfg.log.debug(
-          `[outbounds] starting ${sender}'s scans...`,
+          `[HR] [outbounds] starting ${sender}'s scans...`,
         );
         const ts = setInterval(() => process.stdout.write('.'), 3000);
         const start = Date.now();
@@ -722,14 +737,14 @@ class EarningsAnalyzer {
           { perRecipient: hiveMap, perRecipientTxCount: hiveCountMap },
           { perRecipient: tokMap, perRecipientTxCount: tokenCountMap },
         ] = await Promise.all([
-          this.#hiveSvc.analyseOutbound(sender, since),
-          this.#tokSvc.analyseOutbound(sender, since),
+          this.#hiveSvc.analyzeOutbound(sender, since),
+          this.#tokSvc.analyzeOutbound(sender, since),
         ]);
 
         clearInterval(ts);
         const durationMinutes = ((Date.now() - start) / 60000).toFixed(2);
         console.log(
-          `\n[outbounds] ${sender}'s scans completed in ${durationMinutes} mins`,
+          `\n[HR] [outbounds] ${sender}'s scans completed in ${durationMinutes} mins`,
         );
 
         if (!Object.keys(hiveMap).length && !Object.keys(tokMap).length) {
@@ -743,16 +758,16 @@ class EarningsAnalyzer {
           continue;
         }
 
-        this.#cfg.verbose && this.#cfg.log.debug('[outbounds] fetching prices...');
-
-        const recipients = {};
+        this.#cfg.verbose && this.#cfg.log.debug('[HR] [outbounds] fetching prices...');
         const hiveUsd = await this.#priceProv.getHiveUsd();
+        
+        const recipients = {};
         const cache = new Map();
-        const priceFor = async sym => {
-          if (cache.has(sym)) return cache.get(sym);
-          const p = await this.#tokSvc.getTokenPriceUsd({ symbol: sym, hiveUsd });
-          cache.set(sym, p);
-          return p;
+        const priceFor = async (symbol) => {
+          if (cache.has(symbol)) return cache.get(symbol);
+          const price = await this.#tokSvc.getTokenPriceUsd({ symbol, hiveUsd });
+          cache.set(symbol, price);
+          return price;
         };
 
         for (const [user, amt] of Object.entries(hiveMap)) {
@@ -783,10 +798,10 @@ class EarningsAnalyzer {
               },
             };
           }
-          for (const [sym, amt] of Object.entries(bag)) {
-            const usdEach = await priceFor(sym);
+          for (const [symbol, amt] of Object.entries(bag)) {
+            const usdEach = await priceFor(symbol);
             const usd = +(amt * usdEach).toFixed(8);
-            recipients[user].tokens.breakdown[sym] = {
+            recipients[user].tokens.breakdown[symbol] = {
               amount: +amt.toFixed(2),
               usd,
             };
@@ -798,9 +813,9 @@ class EarningsAnalyzer {
 
         const sortedRecipients = Object.fromEntries(
           Object.entries(recipients).sort(
-            ([, a], [, b]) =>
-              b.hive.totUsd + b.tokens.totUsd -
-              (a.hive.totUsd + a.tokens.totUsd),
+            ([, aa], [, bb]) =>
+              (bb.hive.totUsd + bb.tokens.totUsd) -
+              (aa.hive.totUsd + aa.tokens.totUsd),
           ),
         );
 
@@ -822,8 +837,8 @@ class EarningsAnalyzer {
           [sender]: {
             recipients: sortedRecipients,
             stats: {
-              totHiveTransactions: Object.values(hiveCountMap).reduce((a, b) => a + b, 0),
-              totTokensTransactions: Object.values(tokenCountMap).reduce((a, b) => a + b, 0),
+              totHiveTransactions: Object.values(hiveCountMap).reduce((aa, bb) => aa + bb, 0),
+              totTokensTransactions: Object.values(tokenCountMap).reduce((aa, bb) => aa + bb, 0),
               totUsdSentInHive: +totUsdSentInHive.toFixed(2),
               totUsdSentInTokens: +totUsdSentInTokens.toFixed(2),
             },
@@ -844,9 +859,11 @@ class EarningsAnalyzer {
   };
 }
 
+
 /* -------------------------------------------------------------------------- */
 /* Validation + factory                                                       */
 /* -------------------------------------------------------------------------- */
+
 const validateGlobalParams = cfg => {
   const {
     hours,
@@ -880,11 +897,13 @@ const validateGlobalParams = cfg => {
   }
 };
 
+
 /* -------------------------------------------------------------------------- */
 /* Exports                                                                    */
 /* -------------------------------------------------------------------------- */
+
 export const hiveRewards = async (userCfg = {}) => {
-  console.log('[HR] init');
+  console.log('[HR] initialization');
   const cfg = await buildConfig(userCfg);
   validateGlobalParams(cfg);
   return new EarningsAnalyzer(cfg);
@@ -896,16 +915,18 @@ export const peakdBeaconWrapper = {
   getHealthyHeHistoryNode,
 };
 
+
 /* -------------------------------------------------------------------------- */
 /* CLI helper (Node only)                                                     */
 /* -------------------------------------------------------------------------- */
+
 if (!isBrowser) {
   (async () => {
     const { fileURLToPath } = await import('url');
     const { resolve } = await import('path');
     const __filename = fileURLToPath(import.meta.url);
 
-    if (process.argv[1] && resolve(process.argv[1]) === __filename) {
+    if (process.argv[1] && resolve(process.argv[1]) === __filename) { // ie. executed from terminal
       const raw = process.argv.slice(2);
 
       /* flags validation – we only allow these */
@@ -939,12 +960,14 @@ if (!isBrowser) {
         raw.splice(daysIdx, 2);
       }
 
+      /* execution mode validation */
       const inIdx = raw.indexOf('--inbound');
       const outIdx = raw.indexOf('--outbound');
       if ((inIdx !== -1 && outIdx !== -1) || (inIdx === -1 && outIdx === -1)) {
         throw new Error('Specify **either** --inbound or --outbound');
       }
 
+      /* flags util */
       const collectList = (arr, startIdx) => {
         const list = [];
         let i = startIdx + 1;

@@ -133,16 +133,19 @@ hiveApi.api.setOptions({ url: hiveUrl });
 - Use the Issues tab to report bugs.
 - Create Merge Requests for potential improvements and fixes.
 
+<br>
+
 -----
 
-### WIP
+<br>
+
+##### Work-In-Progress:
 
 - Full Code Review
 - Split into files
 - Update images in readme
-- Add beacon to readme
 - Cleanup, add to github, npm publish
-- Retest imports
+- Test all readme from imports
 &nbsp;
 - USAGE IN CS: Scheduler add to weekly/monthly (buy + stats), add to tournament result (1h), later: add to game UIs
 - Tweet/blog/MM
