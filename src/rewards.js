@@ -435,14 +435,19 @@ class TokenEarningsService {
       if (!page.length) break;
 
       for (const tx of page) {
-        const ts = new Date(tx.timestamp).getTime();
+        const ts = new Date(tx.timestamp * 1000).getTime();
         if (ts < sinceTs) {
           more = false;
           break;
         }
 
         const { operation, symbol, quantity, from, to } = tx;
-        const inbound = (operation === 'tokens_transfer' || operation === 'tokens_stake')
+        const inbound = (
+          operation === 'tokens_transfer' ||
+          operation === 'transfer'        ||
+          operation === 'tokens_stake'    ||
+          operation === 'stake'
+        )
           && to === username
           && senderAccounts.includes(from);
 
@@ -494,7 +499,7 @@ class TokenEarningsService {
     return {
       breakdown,
       totUsd: +totUsd.toFixed(8),
-      totTokensTransactions,
+      transactions: totTokensTransactions,
     };
   };
 
@@ -509,6 +514,7 @@ class TokenEarningsService {
     const ignored = ignoredReceivers;
     const perRecipient = {};
     const perRecipientTxCount = {};
+    const perRecipientSymbolTxCount = {};
     let more = true;
     let offset = 0;
     verbose && log.debug('[HR] [analyzeOutbound] (Tokens)', { sender, sinceTs });
@@ -522,14 +528,19 @@ class TokenEarningsService {
       if (!page.length) break;
 
       for (const tx of page) {
-        const ts = new Date(tx.timestamp).getTime();
+        const ts = new Date(tx.timestamp * 1000).getTime();
         if (ts < sinceTs) {
           more = false;
           break;
         }
 
         const { operation, symbol, quantity, from, to } = tx;
-        const outbound = (operation === 'tokens_transfer' || operation === 'tokens_stake')
+        const outbound = (
+          operation === 'tokens_transfer' ||
+          operation === 'transfer'        ||
+          operation === 'tokens_stake'    ||
+          operation === 'stake'
+        )
           && from === sender;
         const shouldIgnore = from === to || ignored.includes(to);
 
@@ -537,6 +548,8 @@ class TokenEarningsService {
           perRecipient[to] ??= {};
           perRecipient[to][symbol] = (perRecipient[to][symbol] ?? 0) + parseFloat(quantity);
           perRecipientTxCount[to] = (perRecipientTxCount[to] ?? 0) + 1;
+          perRecipientSymbolTxCount[to] ??= {};
+          perRecipientSymbolTxCount[to][symbol] = (perRecipientSymbolTxCount[to][symbol] ?? 0) + 1;
           verbose && log.debug('[HR] [TOK-OUT]', { to, sym: symbol, qty: quantity });
         }
       }
@@ -545,7 +558,7 @@ class TokenEarningsService {
       await sleep(apiCallsDelay);
     }
 
-    return { perRecipient, perRecipientTxCount };
+    return { perRecipient, perRecipientTxCount, perRecipientSymbolTxCount };
   };
 }
 
@@ -735,7 +748,7 @@ class EarningsAnalyzer {
 
         const [
           { perRecipient: hiveMap, perRecipientTxCount: hiveCountMap },
-          { perRecipient: tokMap, perRecipientTxCount: tokenCountMap },
+          { perRecipient: tokMap, perRecipientTxCount: tokenCountMap, perRecipientSymbolTxCount: tokenSymbolCountMap },
         ] = await Promise.all([
           this.#hiveSvc.analyzeOutbound(sender, since),
           this.#tokSvc.analyzeOutbound(sender, since),
@@ -804,6 +817,7 @@ class EarningsAnalyzer {
             recipients[user].tokens.breakdown[symbol] = {
               amount: +amt.toFixed(2),
               usd,
+              transactions: tokenSymbolCountMap?.[user]?.[symbol] ?? 0,
             };
             recipients[user].tokens.totUsd += usd;
           }

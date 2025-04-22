@@ -141,11 +141,9 @@ hiveApi.api.setOptions({ url: hiveUrl });
 
 ##### Work-In-Progress:
 
-- Full Code Review
-- Split into files
+- Refactoring (files)
 - Update images in readme
-- Cleanup, add to github, npm publish
-- Test all readme from imports
+- Retest all readme from imports
 &nbsp;
 - USAGE IN CS: Scheduler add to weekly/monthly (buy + stats), add to tournament result (1h), later: add to game UIs
 - Tweet/blog/MM
