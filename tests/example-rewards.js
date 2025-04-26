@@ -1,4 +1,4 @@
-import { hiveRewards } from '../src/rewards.js';
+import { hiveRewards } from '../rewards.js';
 
 // (async () => {
   const analyzer = await hiveRewards({ verbose: true });

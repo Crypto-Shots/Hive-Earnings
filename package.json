@@ -1,13 +1,14 @@
 {
   "name": "hiverewards",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "SDK for analysing HIVE & Hive-Engine earnings",
   "type": "module",
   "scripts": {
     "start": "node src/rewards.js",
-    "test:node": "node tests/example.js",
-    "test:cli1": "node src/rewards.js --inbound dantrin --from chessRewards=karina.gpt --hours 72",
-    "test:cli2": "node src/rewards.js --outbound cryptoshots.tips cryptoshotsdoom karina.gpt --days 7",
+    "test:node-rewards": "node src/tests/example-rewards.js",
+    "test:cli1-rewards": "node src/rewards.js --inbound dantrin --from chessRewards=karina.gpt --hours 72",
+    "test:cli2-rewards": "node src/rewards.js --outbound cryptoshots.tips cryptoshotsdoom karina.gpt --days 7",
+    "test:node-beaconWrap": "node src/tests/example-beaconWrap.js",
     "build:web": "webpack --config webpack.config.cjs",
     "serve:web": "npx http-server dist"
   },

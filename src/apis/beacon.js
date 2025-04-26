@@ -1,11 +1,11 @@
-// ESM wrapper for Hive, Hive Engine, and Hive Engine History endpoints
-// We fetch healthy nodes from beacon.peakd.com, cache them, and fall back to defaults if needed
+/*
+*  ESM wrapper for Hive, Hive Engine, and Hive Engine History endpoints
+*  We fetch healthy nodes from beacon.peakd.com, cache them, and fall back to defaults if needed.
+*/
 
-import fetchModule from 'node-fetch'; // for Node < 18
-
-const isBrowser = typeof window !== 'undefined';
-const fetchFn = (isBrowser && window.fetch) || (typeof globalThis !== undefined && globalThis.fetch) || fetchModule;
-
+import hiveJs, { api as hiveApi } from '@hiveio/hive-js';
+import { promisify } from 'util';
+import { buildUrl, fetchFn, fetchRetry, withRetries } from '../utils/utils.js';
 
 const BEACON_URLS = {
   hive: 'https://beacon.peakd.com/api/nodes',
@@ -95,6 +95,21 @@ const refreshNodes = async (type) => {
   }
 };
 
+// kick off background refreshes to minimize first‑use delay
+Object.keys(BEACON_URLS)
+  .forEach((type) => {
+    refreshNodes(type);
+    const poller = setInterval(() => refreshNodes(type), HEALTH_STALE_AFTER_MS - 500);
+    // if running under Node, prevent poller from blocking the process exit
+    if (typeof poller.unref === 'function') {
+      // we let the timer not keep the event loop alive
+      poller.unref();
+    }
+  });
+
+
+// ## HEALTHY NODES
+
 /**
  * We pick a random endpoint from cache[type].nodes and verify it responds to HEAD.
  * If it fails we remove the unreacheable url from the cache and pick another url or refresh.
@@ -125,18 +140,6 @@ export const getNodeEndpoint = async ({ type, prevUrl }) => {
   }
 };
 
-// kick off background refreshes to minimize first‑use delay
-Object.keys(BEACON_URLS)
-  .forEach((type) => {
-    refreshNodes(type);
-    const poller = setInterval(() => refreshNodes(type), HEALTH_STALE_AFTER_MS);
-    // if running under Node, prevent poller from blocking the process exit
-    if (typeof poller.unref === 'function') {
-      // we let the timer not keep the event loop alive
-      poller.unref();
-    }
-  });
-
 /**
  * Get a healthy Hive RPC endpoint.
  * @returns {Promise<string>}
@@ -154,3 +157,88 @@ export const getHealthyHeNode = () => getNodeEndpoint({ type: 'he' });
  * @returns {Promise<string>}
  */
 export const getHealthyHeHistoryNode = () => getNodeEndpoint({ type: 'heh' });
+
+
+// ## API CALLS WRAPPERS
+
+/**
+ * Wrap Hive RPC calls via hive-js with retries and endpoint failover.
+ * @param {string} methodName - RPC method name on hiveJs.api
+ * @param {Array<*>} args - arguments array for the RPC call
+ * @param {number} [retries=3] - optional number of retry attempts
+ * @returns {Promise<*>}
+ */
+export async function hiveApiCall(methodName, args, retries = 3) {
+  // ensure the method exists on hiveApi
+  if (typeof hiveApi[methodName] !== 'function') {
+    throw new Error(
+      `Unknown Hive API method: "${methodName}". Available methods: ${Object.keys(hiveApi).join(', ')}`
+    );
+  }
+
+  let apiEndpoint = await getHealthyHiveNode();
+  hiveJs.api.setOptions({ url: apiEndpoint });
+  const rpcFn = promisify(hiveApi[methodName]).bind(hiveApi);
+
+  return withRetries(async attempt => {
+    if (attempt > 0) {
+      const newEndpoint = await getNodeEndpoint({ type: 'hive', prevUrl: apiEndpoint });
+      apiEndpoint = newEndpoint;
+      hiveJs.api.setOptions({ url: newEndpoint });
+    }
+    return rpcFn(...args);
+  }, retries);
+}
+
+/**
+ * Wrap Hive Engine RPC calls with retries and endpoint failover.
+ * @param {Object} body - JSON-RPC request body
+ * @param {number} [retries=3] - optional number of retry attempts
+ * @returns {Promise<Object>}
+ */
+export async function hiveEngineApiCall(body, retries = 3) {
+  let rpcEndpoint = await getHealthyHeNode();
+
+  return withRetries(async attempt => {
+    if (attempt > 0) {
+      const newEndpoint = await getNodeEndpoint({ type: 'he', prevUrl: rpcEndpoint });
+      rpcEndpoint = newEndpoint;
+    }
+    const url = buildUrl(rpcEndpoint, 'contracts');
+    const res = await fetchRetry(fetchFn, url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }, retries);
+    if (!res.ok) {
+      throw new Error(`HE RPC (${url}): ${res.status}`);
+    }
+    return res.json();
+  }, retries);
+}
+
+/**
+ * Wrap Hive Engine History GET calls with retries and endpoint failover.
+ * @param {string} account - account name
+ * @param {number} limit - number of records
+ * @param {number} [offset=0] - pagination offset
+ * @param {number} [retries=3] - optional number of retry attempts
+ * @returns {Promise<Object>}
+ */
+export async function hiveEngineHistoryApiCall(account, limit, offset = 0, retries = 3) {
+  let historyEndpoint = await getHealthyHeHistoryNode();
+
+  return withRetries(async attempt => {
+    if (attempt > 0) {
+      const newEndpoint = await getNodeEndpoint({ type: 'heh', prevUrl: historyEndpoint });
+      historyEndpoint = newEndpoint;
+    }
+    const qs = `account=${encodeURIComponent(account)}&limit=${limit}&offset=${offset}&type=user`;
+    const url = buildUrl(historyEndpoint, `accountHistory?${qs}`);
+    const res = await fetchRetry(fetchFn, url, {}, retries);
+    if (!res.ok) {
+      throw new Error(`HE history (${url}): ${res.status}`);
+    }
+    return res.json();
+  }, retries);
+}
