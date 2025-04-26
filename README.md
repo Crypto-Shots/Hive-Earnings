@@ -96,10 +96,7 @@ Note: append `--verbose` for verbose logging
 
 | Env var                       | Default                                                        |
 |-------------------------------|----------------------------------------------------------------|
-| `HIVE_NODE_URL`               | `https://api.hive.blog`                                        |
 | `HIVE_PRICE_URL`              | `https://api.coingecko.com/api/v3/simple/price?ids=hive&vs_currencies=usd` |
-| `HIVE_ENGINE_HISTORY_URL`     | `https://history.hive-engine.com/accountHistory`               |
-| `HIVE_ENGINE_RPC_URL`         | `https://enginerpc.com/contracts`                              |
 
 You can also override any of the defaults by passing a config object to the `hiveRewards()` factory in code.
 
@@ -123,6 +120,33 @@ const hehUrl = await getHealthyHeHistoryNode();
 hiveApi.api.setOptions({ url: hiveUrl });
 ```
 
+...our use our client wrappers that auto-rotate healthy nodes:
+
+
+```js
+import { hiveApiCall, hiveEngineApiCall, hiveEngineHistoryApiCall } from './beacon.js';
+
+const history = await hiveApiCall('getAccountHistory', ['cryptoshotsdoom', -1, 10]);
+console.log(history);
+
+const metrics = await hiveEngineApiCall({
+  jsonrpc: '2.0',
+  method:  'find',
+  params: {
+    contract: 'market',
+    table:    'metrics',
+    query:    { symbol: 'DOOM' },
+    limit:    1,
+    offset:   0
+  },
+  id: 1
+});
+console.log(metrics);
+
+const history = await hiveEngineHistoryApiCall('cryptoshotstips', 20);
+console.log(history);
+```
+
 <br>
 
 ---
@@ -141,7 +165,6 @@ hiveApi.api.setOptions({ url: hiveUrl });
 
 ##### Work-In-Progress:
 
-- Refactoring: files + PeakdBeaconWrapper retry method
 - Update images in readme
 - Retest all readme from imports
 &nbsp;
