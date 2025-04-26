@@ -61,7 +61,7 @@ const withRetries = async (fn, retries = 3, baseDelay = 300) => {
       return await fn(attempt);
     } catch (err) {
       lastErr = err;
-      if (attempt < retries) {
+      if (attempt < retries - 1) {
         const expWait = 2 ** attempt * baseDelay;
         await sleep(expWait);
       }

@@ -141,12 +141,12 @@ hiveApi.api.setOptions({ url: hiveUrl });
 
 ##### Work-In-Progress:
 
-- Refactoring (files)
+- Refactoring: files + PeakdBeaconWrapper retry method
 - Update images in readme
 - Retest all readme from imports
 &nbsp;
 - USAGE IN CS: Scheduler add to weekly/monthly (buy + stats), add to tournament result (1h), later: add to game UIs
 - Tweet/blog/MM
 &nbsp;
-- Flattener
-- OLD LISTS !!!
+- OSS Unity Plugin?
+- AI Flattener
