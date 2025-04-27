@@ -1,6 +1,6 @@
 {
   "name": "hiverewards",
-  "version": "1.0.2",
+  "version": "1.0.10",
   "description": "SDK for analysing HIVE & Hive-Engine earnings",
   "type": "module",
   "scripts": {
@@ -32,6 +32,10 @@
   },
   "overrides": {
     "ws": "8.18.1"
+  },
+  "peerDependencies": {
+    "@hiveio/hive-js": ">=2.0.8",
+    "cross-fetch": "^4"
   },
   "keywords": [
     "hive",

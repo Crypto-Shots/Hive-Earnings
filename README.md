@@ -25,6 +25,7 @@ console.log(inbound);
 
 const outbound = await analyzer.outbounds({
   senders: ['cryptoshots.tips', 'karina.gpt'],
+  ignoredReceivers: ['keychain.swap'],
   days: 1,
 });
 console.log(outbound);
@@ -79,7 +80,7 @@ npm start -- --inbound obifenom zillionz --from pvpRewards=cryptoshots.tips pveR
 </center>
 
 ```bash
-npm start -- --outbound cryptoshots.tips cryptoshotsdoom karina.gpt --days 2
+npm start -- --outbound cryptoshots.tips karina.gpt --days 1
 ```
 
 <center>
@@ -104,7 +105,7 @@ You can also override any of the defaults by passing a config object to the `hiv
 
 ---
 
-## Peakd's Beacon Wrapper usage
+# Peakd's Beacon Wrapper usage
 
 Wrapper for [@peakd](https://peakd.com/@peakd)'s [Beacon](https://beacon.peakd.com) APIs.
 
@@ -153,23 +154,8 @@ console.log(history);
 
 ## Support us
 
-- #### [VOTE](https://vote.hive.uno/@crypto-shots) for our witness
-- Use the Issues tab to report bugs.
-- Create Merge Requests for potential improvements and fixes.
+- #### [VOTE](https://vote.hive.uno/@crypto-shots) for our witness 🙇‍♂️
+- Use the [Issues](https://github.com/Crypto-Shots/Hive-Earnings/issues) tab to report bugs.
+- Create [Merge Requests](https://github.com/Crypto-Shots/Hive-Earnings/pulls) for potential improvements and fixes.
 
 <br>
-
------
-
-<br>
-
-##### Work-In-Progress:
-
-- Update images in readme
-- Retest all readme from imports
-&nbsp;
-- USAGE IN CS: Scheduler add to weekly/monthly (buy + stats), add to tournament result (1h), later: add to game UIs
-- Tweet/blog/MM
-&nbsp;
-- OSS Unity Plugin?
-- AI Flattener
