@@ -3,12 +3,13 @@
 /* -------------------------------------------------------------------------- */
 /* Imports                                                                    */
 /* -------------------------------------------------------------------------- */
-import hiveJs, { utils as hiveUtils } from '@hiveio/hive-js';
+import hiveJs from '@hiveio/hive-js';
 
 import {
   getHealthyHiveNode,
   getHealthyHeNode,
   getHealthyHeHistoryNode,
+  setHiveJs,
 } from './apis/beacon.js';
 import {
   fetchFn,
@@ -30,12 +31,12 @@ import { validateGlobalParams } from './utils/validateParams.js';
 const defaultConfigBase = {
   fetch: fetchFn,
   hiveJs,
-  hiveUtils,
+  hiveUtils: hiveJs.utils,
   log: console,
   hours: DEFAULT_TRACKING_HOURS,
   apiCallsDelay: DEFAULT_API_CALLS_DELAY_MS,
   hivePriceUrl: process.env.HIVE_PRICE_URL ?? DEFAULT_PRICE_API,
-  priceCacheMins: Number(process.env.PRICE_CACHE_MINS ?? DEFAULT_PRICE_CACHING_MINS),
+  priceCacheMins: DEFAULT_PRICE_CACHING_MINS,
   hiveHistoryLimit: DEFAULT_HIVE_HISTORY_LIMIT,
   heHistoryLimit: DEFAULT_HE_HISTORY_LIMIT,
   hiveSenders: {},
@@ -71,6 +72,11 @@ const buildConfig = async (userCfg = {}) => {
     `[HR] Config initialized in ${durationSeconds}s`,
     { verbose: userCfg.verbose, hiveNodeUrl, hiveEngineRpcUrl, hiveEngineHistoryUrl },
   );
+
+  if (userCfg.hiveJs) {
+    userCfg.hiveUtils = userCfg.hiveJs.utils;
+    setHiveJs(userCfg.hiveJs);
+  }
 
   return {
     ...defaultConfigBase,

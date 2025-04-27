@@ -1,3 +1,18 @@
+
+&nbsp;
+
+📑 **CONTENTS**
+&nbsp;
+- 💸 **[Hive Rewards]()** [usage – NodeJS & Browser](#usage---nodejs--browser)  
+  - [CLI Usage](#usage---cli)  
+  - [Custom Configuration](#configuration)
+&nbsp;
+- 😺 **[Peakd’s Beacon Wrapper](#peakds-beacon-wrapper)** &nbsp;and &nbsp;**[Hive / HiveEngine API Wrappers](#peakds-beacon-wrapper)**
+
+&nbsp;
+
+-----
+
 # Hive Rewards
 
 An SDK for Node.js and the browser, and a command‑line tool to scan HIVE and Hive‑Engine token transfers:
@@ -99,15 +114,38 @@ Note: append `--verbose` for verbose logging
 |-------------------------------|----------------------------------------------------------------|
 | `HIVE_PRICE_URL`              | `https://api.coingecko.com/api/v3/simple/price?ids=hive&vs_currencies=usd` |
 
-You can also override any of the defaults by passing a config object to the `hiveRewards()` factory in code.
+You can also override the initial Hive / Hive Engine node by passing a config object to the `hiveRewards()` factory in code.
+eg.
+```js
+const analyzer = await hiveRewards({
+  hiveNodeUrl: 'https://your.hive.node',
+  hiveEngineRpcUrl: 'https://your.he.rpc',
+  hiveEngineHistoryUrl: 'https://your.he.history',
+});
+```
+
+**Other Overrides:**
+
+| Constructor Attribute | Description | Default |
+|-------------------------------|---------------------------|-----------------------------|
+| fetch             | Fetch API implementation |                       `npm cross-fetch`|
+| hiveJs            | pass in another @hiveio/hive-js version, if needed |   v2 |
+| log               | custom logger |                                         console |
+| apiCallsDelay     | default wait time for api call retries |                500 (with exp backoff) |
+| priceCacheMins    | how long Hive price is cached for |                     10 mins |
+| hiveHistoryLimit  | page size (max account‐history ops per call) |          500 |
+| heHistoryLimit    | page size (max Hive-Engine history records per call)  |          250 |
+
 
 <br>
 
 ---
 
-# Peakd's Beacon Wrapper usage
+# Peakd's Beacon Wrapper
 
 Wrapper for [@peakd](https://peakd.com/@peakd)'s [Beacon](https://beacon.peakd.com) APIs.
+
+**Usage:**
 
 ```js
 import { peakdBeaconWrapper } from 'hiverewards';
@@ -121,7 +159,7 @@ const hehUrl = await getHealthyHeHistoryNode();
 hiveApi.api.setOptions({ url: hiveUrl });
 ```
 
-...our use our client wrappers that auto-rotate healthy nodes:
+...our use our Hive / Hive Engine **client wrappers** that automatically rotate healthy nodes:
 
 
 ```js

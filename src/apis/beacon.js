@@ -3,9 +3,19 @@
 *  We fetch healthy nodes from beacon.peakd.com, cache them, and fall back to defaults if needed.
 */
 
-import hiveJs, { api as hiveApi } from '@hiveio/hive-js';
+import defaultHiveJs, { api as defaultHiveApi } from '@hiveio/hive-js';
 import { promisify } from 'util';
+
 import { buildUrl, fetchFn, fetchRetry, sleep, withRetries } from '../utils/utils.js';
+
+
+// ## CONFIG
+
+// we allow clients to inject their own hiveJs instance
+let hiveJs = defaultHiveJs;
+let hiveApi = defaultHiveApi;
+export const setHiveJs = inst => { hiveJs = inst; hiveApi = inst.api; };
+
 
 const BEACON_URLS = {
   hive: 'https://beacon.peakd.com/api/nodes',
@@ -39,9 +49,9 @@ const DEFAULT_NODES = {
   ],
 };
 
-const HEALTH_STALE_AFTER_MS = 10 * 60 * 1000; // X mins
 
 const BEACON_FETCH_TIMEOUT_MS = 3000;
+const HEALTH_STALE_AFTER_MS = 10 * 60 * 1000; // X mins
 
 
 const cache = {
@@ -49,6 +59,9 @@ const cache = {
   he:   { nodes: [], lastFetch: 0 },
   heh:  { nodes: [], lastFetch: 0 },
 };
+
+
+// ## PERIODIC REFRESH
 
 /**
  * we fetch and cache the list of healthy endpoints for the given type
@@ -168,7 +181,7 @@ export const getHealthyHeNode = () => getNodeEndpoint({ type: 'he' });
 export const getHealthyHeHistoryNode = () => getNodeEndpoint({ type: 'heh' });
 
 
-// ## API CALLS WRAPPERS
+// ## HIVE/HE API WRAPPERS
 
 /**
  * Wrap Hive RPC calls via hive-js with retries and endpoint failover.
