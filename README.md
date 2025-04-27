@@ -2,14 +2,15 @@
 &nbsp;
 
 📑 **CONTENTS**
-&nbsp;
+<br>
 - 💸 **[Hive Rewards]()** [usage – NodeJS & Browser](#usage---nodejs--browser)  
   - [CLI Usage](#usage---cli)  
   - [Custom Configuration](#configuration)
-&nbsp;
+<br>
 - 😺 **[Peakd’s Beacon Wrapper](#peakds-beacon-wrapper)** &nbsp;and &nbsp;**[Hive / HiveEngine API Wrappers](#peakds-beacon-wrapper)**
-
 &nbsp;
+- 😺 **[Usage in Crypto Shots](#usage-in-crypto-shots)**
+<br>
 
 -----
 
@@ -191,6 +192,18 @@ console.log(history);
 <br>
 
 ---
+
+## Usage in CRYPTO SHOTS
+
+**[DISCORD](https://crypto-shots.com/discord):**
+- Earnings report for Daily Tournaments
+- Weekly/monthly Top Earners leaderboard
+
+![](./DOCS/images/UsageCS.png)
+
+---
+
+<br>
 
 ## Support us
 

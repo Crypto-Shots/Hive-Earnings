@@ -9,6 +9,7 @@
     "test:cli1-rewards": "node src/rewards.js --inbound dantrin --from chessRewards=karina.gpt --hours 72",
     "test:cli2-rewards": "node src/rewards.js --outbound cryptoshots.tips cryptoshotsdoom karina.gpt --days 7",
     "test:node-beaconWrap": "node src/tests/example-beaconWrap.js",
+    "release": "npm version patch; git push --follow-tags",
     "build:web": "webpack --config webpack.config.cjs",
     "serve:web": "npx http-server dist"
   },
@@ -43,6 +44,10 @@
     "hive.io",
     "sdk"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Crypto-Shots/Hive-Earnings.git"
+  },
   "exports": {
     ".": "./src/index.js"
   },
