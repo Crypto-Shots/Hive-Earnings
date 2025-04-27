@@ -163,7 +163,9 @@ hiveApi.api.setOptions({ url: hiveUrl });
 
 
 ```js
-import { hiveApiCall, hiveEngineApiCall, hiveEngineHistoryApiCall } from './beacon.js';
+import { healthyApisWrapper } from 'hiverewards';
+
+const { hiveApiCall, hiveEngineApiCall, hiveEngineHistoryApiCall } = healthyApisWrapper;
 
 const history = await hiveApiCall('getAccountHistory', ['cryptoshotsdoom', -1, 10]);
 console.log(history);
