@@ -201,7 +201,7 @@ export class TokenEarningsService {
     const cache = new Map();
     const priceFor = async (sym) => {
       if (cache.has(sym)) return cache.get(sym);
-      const price = await this.getTokenPriceUsd({ symbol: sym, hiveUsd });
+      const { price } = await this.getTokenPriceUsd({ symbol: sym, hiveUsd });
       cache.set(sym, price);
       return price;
     };

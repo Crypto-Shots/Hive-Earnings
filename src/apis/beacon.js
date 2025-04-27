@@ -5,7 +5,7 @@
 
 import hiveJs, { api as hiveApi } from '@hiveio/hive-js';
 import { promisify } from 'util';
-import { buildUrl, fetchFn, fetchRetry, withRetries } from '../utils/utils.js';
+import { buildUrl, fetchFn, fetchRetry, sleep, withRetries } from '../utils/utils.js';
 
 const BEACON_URLS = {
   hive: 'https://beacon.peakd.com/api/nodes',
@@ -74,6 +74,7 @@ const refreshNodes = async (type) => {
       console.error(
         '\n[nodesApi] Failed to query Peakd Beacon. Using default nodes.',
         errFetch,
+        new Error().stack,
       );
     }
     const healthy = allNodes?.filter((n) =>
@@ -118,12 +119,14 @@ Object.keys(BEACON_URLS)
  * @param {string} prevUrl
  * @returns {Promise<string>}
  */
-export const getNodeEndpoint = async ({ type, prevUrl }) => {
+export const getNodeEndpoint = async ({ type, prevUrl }, attempt = 1, baseDelay = 300) => {
   if (prevUrl) {
     cache[type].nodes = cache[type].nodes.filter(n => n !== prevUrl);
   }
   const { nodes, lastFetch } = cache[type];
-  if (!nodes?.length || (Date.now() - lastFetch) > HEALTH_STALE_AFTER_MS) {
+  const hasCachedNodes = nodes?.length;
+  const hasStaleNodes = (Date.now() - lastFetch) > HEALTH_STALE_AFTER_MS;
+  if (!hasCachedNodes || hasStaleNodes) {
     await refreshNodes(type);
   }
   if (!cache[type].nodes.length) {
@@ -132,11 +135,17 @@ export const getNodeEndpoint = async ({ type, prevUrl }) => {
   const list = cache[type].nodes;
   const url = list[Math.floor(Math.random() * list.length)];
   try {
-    await fetchFn(url, { method: 'HEAD' });
+    await fetchFn(url, { method: 'HEAD' }); // connectivity check (eg. client lost connection)
     return url;
-  } catch {
-    cache[type].nodes = cache[type].nodes.filter((n) => n !== url); // 
-    return getNodeEndpoint({ type });
+  } catch (err) {
+    console.error('Client connectivity check failed', url, err);
+    if (attempt === 3) {
+      console.error(`\n\n ❗ Connectivity checks failed. Please verify your connection. ❗ \n\n`);
+      throw new Error('client has no connectivity');
+    }
+    cache[type].nodes = cache[type].nodes.filter((n) => n !== url);
+    await sleep((2 ** attempt) * baseDelay);
+    return getNodeEndpoint({ type, prevUrl }, ++attempt, baseDelay);
   }
 };
 
@@ -183,6 +192,7 @@ export async function hiveApiCall(methodName, args, retries = 3) {
   return withRetries(async attempt => {
     if (attempt > 0) {
       const newEndpoint = await getNodeEndpoint({ type: 'hive', prevUrl: apiEndpoint });
+      console.log('Swapped to new endpoint:', newEndpoint);
       apiEndpoint = newEndpoint;
       hiveJs.api.setOptions({ url: newEndpoint });
     }
@@ -202,6 +212,7 @@ export async function hiveEngineApiCall(body, retries = 3) {
   return withRetries(async attempt => {
     if (attempt > 0) {
       const newEndpoint = await getNodeEndpoint({ type: 'he', prevUrl: rpcEndpoint });
+      console.log('Swapped to new endpoint:', newEndpoint);
       rpcEndpoint = newEndpoint;
     }
     const url = buildUrl(rpcEndpoint, 'contracts');
@@ -231,6 +242,7 @@ export async function hiveEngineHistoryApiCall(account, limit, offset = 0, retri
   return withRetries(async attempt => {
     if (attempt > 0) {
       const newEndpoint = await getNodeEndpoint({ type: 'heh', prevUrl: historyEndpoint });
+      console.log('Swapped to new endpoint:', newEndpoint);
       historyEndpoint = newEndpoint;
     }
     const qs = `account=${encodeURIComponent(account)}&limit=${limit}&offset=${offset}&type=user`;

@@ -10,10 +10,9 @@ module.exports = {
     library: 'HiveRewards',
     libraryTarget: 'umd',
     umdNamedDefine: true,
-    globalObject: "typeof self !== 'undefined' ? self : this",
+    globalObject: 'typeof self !== \'undefined\' ? self : this',
   },
   resolve: {
-    // make sure require('process/browser') actually finds the browser shim
     alias: {
       'process/browser': require.resolve('process/browser'),
     },
@@ -29,10 +28,14 @@ module.exports = {
     },
     extensions: ['.js', '.json'],
   },
+  externals: {
+    'cross-fetch': 'commonjs cross-fetch',
+    ws:            'commonjs ws',
+  },
   plugins: [
     new webpack.ProvidePlugin({
       process: 'process/browser',
-      Buffer: ['buffer', 'Buffer'],
+      Buffer:  ['buffer', 'Buffer'],
     }),
   ],
 };

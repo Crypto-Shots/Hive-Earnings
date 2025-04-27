@@ -193,6 +193,7 @@ if (!isBrowser) {
 
         console.log('\nINBOUND RESULTS:');
         console.dir(res, { depth: null });
+        process.exit(0);
         return;
       }
 
@@ -210,7 +211,6 @@ if (!isBrowser) {
 
       console.log('\nOUTBOUND RESULTS:');
       console.dir(res, { depth: null });
-
       process.exit(0);
     }
   })();

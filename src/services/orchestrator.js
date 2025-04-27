@@ -94,7 +94,7 @@ export class EarningsAnalyzer {
           [acc]: await this.analyzeAccountInbounds(acc),
         };
       } catch (err) {
-        console.error(`[inbounds] Error analyzing ${acc}: ${err.message}`);
+        console.error(`[inbounds] Error analyzing ${acc}:`, err);
         out.recipients = {
           ...out.recipients,
           [acc]: { error: err.message },
@@ -205,7 +205,7 @@ export class EarningsAnalyzer {
         const cache = new Map();
         const priceFor = async (symbol) => {
           if (cache.has(symbol)) return cache.get(symbol);
-          const price = await this.#tokSvc.getTokenPriceUsd({ symbol, hiveUsd });
+          const { price } = await this.#tokSvc.getTokenPriceUsd({ symbol, hiveUsd });
           cache.set(symbol, price);
           return price;
         };
@@ -285,7 +285,7 @@ export class EarningsAnalyzer {
           },
         };
       } catch (err) {
-        console.error(`[outbounds] Error analyzing ${sender}: ${err.message}`);
+        console.error(`[outbounds] Error analyzing ${sender}:`, err);
         out.senders = {
           ...out.senders,
           [sender]: { error: err.message },

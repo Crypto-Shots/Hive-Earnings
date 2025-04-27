@@ -1,66 +1,41 @@
-import { promisify } from 'util';
-import { getNodeEndpoint } from './beacon.js';
-import { withRetries, buildUrl, fetchRetry } from '../utils/utils.js';
+import { fetchRetry, withRetries } from '../utils/utils.js';
+import { hiveApiCall, hiveEngineApiCall, hiveEngineHistoryApiCall } from './beacon.js';
 
 /* -------------------------------------------------------------------------- */
 /* Infrastructure classes                                                     */
 /* -------------------------------------------------------------------------- */
 
 export class HiveApi {
-  #hiveLib;
-  #apiEndpoint;
-  #getAccountHistory;
+  #verboseLogs;
 
-  constructor({ hiveJs: hivelib, hiveNodeUrl }) {
-    this.#hiveLib = hivelib;
-    this.#hiveLib.api.setOptions({ url: hiveNodeUrl });
-    this.#apiEndpoint = hiveNodeUrl;
-    this.#getAccountHistory = promisify(this.#hiveLib.api.getAccountHistory)
-      .bind(this.#hiveLib.api);
+  constructor({ verbose }) {
+    this.#verboseLogs = verbose;
   }
 
-  getAccountHistory = async (account, start, limit) => withRetries(
-    async (attempt) => {
-      if (attempt > 1) {
-        const newEndpoint = await getNodeEndpoint({ type: 'hive', prevUrl: this.#apiEndpoint });
-        this.#apiEndpoint = newEndpoint;
-        this.#hiveLib.api.setOptions({ url: newEndpoint });
-        console.log('[HR] HiveApi switched to new endpoint', { attempt, newEndpoint });
-      }
-      return this.#getAccountHistory(account, start, limit);
-    }
-  );
+  getAccountHistory = async (account, start, limit) => {
+    this.#verboseLogs && console.log('[HiveApi][getAccountHistory] request:', { account, start, limit });
+    const resp = await hiveApiCall('getAccountHistory', [account, start, limit]);
+    this.#verboseLogs && console.log('[HiveApi][getAccountHistory] response:', JSON.stringify(resp));
+    return resp;
+  }
 }
 
 export class HiveEngineApi {
-  #fetch;
-  #historyUrl;
-  #rpcUrl;
+  #verboseLogs;
 
-  constructor({ fetch, hiveEngineHistoryUrl, hiveEngineRpcUrl }) {
-    this.#fetch = fetch;
-    this.#historyUrl = hiveEngineHistoryUrl;
-    this.#rpcUrl = hiveEngineRpcUrl;
+  constructor({ verbose }) {
+    this.#verboseLogs = verbose;
   }
 
-  getHistory = async ({ account, limit, offset }) => withRetries(async (attempt) => {
-    const HISTORY_PATH = 'accountHistory';
-    if (attempt > 1) {
-      const newEndpoint = await getNodeEndpoint({ type: 'heh', prevUrl: this.#historyUrl });
-      this.#historyUrl = newEndpoint;
-      console.log('[HR] HiveEngineHistoryApi switched to new endpoint', { attempt, newEndpoint });
-    }
-    const url = buildUrl(
-      this.#historyUrl,
-      `${HISTORY_PATH}?account=${encodeURIComponent(account)}`
-      + `&limit=${limit}&offset=${offset}&type=user`
-    );
-    const res = await fetchRetry(this.#fetch, url);
-    if (!res.ok) throw new Error(`HE history (${url}): ${res.status}`);
-    return res.json();
-  });
+  getHistory = async ({ account, limit, offset }) => {
+    this.#verboseLogs && console.log('[HiveEngineApi][getHistory] request:', { account, limit, offset });
+    const resp = await hiveEngineHistoryApiCall(account, limit, offset);
+    this.#verboseLogs && console.log('[HiveEngineApi][getHistory] response:', JSON.stringify(resp));
+    return resp;
+  }
 
-  getTokenPriceUsd = async ({ symbol, hiveUsd }) => withRetries(async (attempt) => {
+  getTokenPriceUsd = async ({ symbol, hiveUsd }) => {
+    this.#verboseLogs && console.log('[HiveEngineApi][getTokenPriceUsd] request:', { symbol, hiveUsd });
     const body = {
       jsonrpc: '2.0',
       method: 'find',
@@ -69,27 +44,16 @@ export class HiveEngineApi {
         table: 'metrics',
         query: { symbol },
         limit: 1,
-        offset: 0,
+        offset: 0
       },
-      id: 1,
+      id: 1
     };
-    if (attempt > 1) {
-      const newEndpoint = await getNodeEndpoint({ type: 'he', prevUrl: this.#rpcUrl });
-      this.#rpcUrl = newEndpoint;
-      console.log('[HR] HiveEnginePriceApi switched to new endpoint', { attempt, newEndpoint });
-    }
-    const CONTRACTS_PATH = 'contracts';
-    const url = buildUrl(this.#rpcUrl, CONTRACTS_PATH);
-    const res = await fetchRetry(this.#fetch, url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(`HE price (${url}): ${res.status}`);
-    const data = await res.json();
-    const lastPrice = data?.result?.[0]?.lastPrice;
-    return lastPrice ? +lastPrice * hiveUsd : 0;
-  });
+    const res = await hiveEngineApiCall(body);
+    const lastPrice = res?.result?.[0]?.lastPrice;
+    const result = { price: lastPrice ? +lastPrice * hiveUsd : 0 };
+    this.#verboseLogs && console.log('[HiveEngineApi][getTokenPriceUsd] response:', JSON.stringify(result));
+    return result;
+  };
 }
 
 export class HivePriceProvider {

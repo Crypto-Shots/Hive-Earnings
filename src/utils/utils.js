@@ -1,9 +1,9 @@
-import fetchModule from 'node-fetch';
+import fetchFn from 'cross-fetch';
 
 
 export const isBrowser = typeof window !== 'undefined';
 
-export const fetchFn = (isBrowser && window.fetch) || (typeof globalThis !== undefined && globalThis.fetch) || fetchModule;
+export { fetchFn};
 
 /**
  * Pause execution for a given number of milliseconds.
@@ -50,7 +50,7 @@ export const withRetries = async (fn, retries = 3, baseDelay = 300) => {
     } catch (err) {
       lastErr = err;
       if (attempt < retries - 1) {
-        const expWait = 2 ** attempt * baseDelay;
+        const expWait = (2 ** attempt) * baseDelay;
         await sleep(expWait);
       }
     }
@@ -67,7 +67,7 @@ export const withRetries = async (fn, retries = 3, baseDelay = 300) => {
  * @param {number} [timeoutMs=10000] - request timeout in ms
  * @returns {Promise<Response>}
  */
-export async function fetchRetry(fetchFn, url, options = {}, retries = 3, timeoutMs = 10_000) {
+export async function fetchRetry(fetchFn, url, options = {}, retries = 3, timeoutMs = 10_000, baseDelay = 300) {
   for (let attempt = 0; attempt < retries; attempt++) {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeoutMs);
@@ -75,7 +75,7 @@ export async function fetchRetry(fetchFn, url, options = {}, retries = 3, timeou
       return await fetchFn(url, { ...options, signal: controller.signal });
     } catch (err) {
       if (attempt === retries - 1) throw err;
-      await new Promise(res => setTimeout(res, 2 ** attempt * 300));
+      await new Promise(res => setTimeout(res, (2 ** attempt) * baseDelay));
     } finally {
       clearTimeout(id);
     }

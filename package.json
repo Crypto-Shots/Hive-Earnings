@@ -13,8 +13,8 @@
     "serve:web": "npx http-server dist"
   },
   "dependencies": {
-    "@hiveio/hive-js": "^0.8.4",
-    "node-fetch": "2.6.7"
+    "@hiveio/hive-js": "^2.0.8",
+    "cross-fetch": "^4.1.0"
   },
   "devDependencies": {
     "assert": "^2.1.0",
@@ -30,8 +30,8 @@
     "webpack": "^5.99.6",
     "webpack-cli": "^6.0.1"
   },
-  "engines": {
-    "node": ">=16.0.0"
+  "overrides": {
+    "ws": "8.18.1"
   },
   "keywords": [
     "hive",
@@ -43,7 +43,7 @@
     ".": "./src/index.js"
   },
   "bin": {
-    "hiverewards": "./src/index.js"
+    "hiverewards": "./src/rewards.js"
   },
   "files": [
     "src/",
@@ -52,5 +52,10 @@
   "main": "src/index.js",
   "module": "src/index.js",
   "browser": "dist/hiverewards.bundle.js",
-  "sideEffects": false
+  "sideEffects": [
+    "src/apis/beacon.js"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }

@@ -1,7 +1,7 @@
 import { hiveRewards } from '../rewards.js';
 
 // (async () => {
-  const analyzer = await hiveRewards({ verbose: true });
+  const analyzer = await hiveRewards({ verbose: false });
 
   const HIVE_SENDERS = {
     PVP_HIVE: 'cryptoshots.tips',
