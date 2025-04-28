@@ -208,7 +208,7 @@ console.log(history);
 ## Support us
 
 - #### [VOTE](https://vote.hive.uno/@crypto-shots) for our witness 🙇‍♂️
-- Use the [Issues](https://github.com/Crypto-Shots/Hive-Earnings/issues) tab to report bugs.
-- Create [Merge Requests](https://github.com/Crypto-Shots/Hive-Earnings/pulls) for potential improvements and fixes.
+- Use the [Issues](https://github.com/Crypto-Shots/Hive-Rewards/issues) tab to report bugs.
+- Create [Merge Requests](https://github.com/Crypto-Shots/Hive-Rewards/pulls) for potential improvements and fixes.
 
 <br>
